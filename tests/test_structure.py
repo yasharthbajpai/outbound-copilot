@@ -18,6 +18,7 @@ os.environ.setdefault("AWS_REGION", "us-east-1")
 class StructureTests(unittest.TestCase):
     def test_top_level_modules_importable(self):
         import config  # noqa: F401
+        import core    # noqa: F401
         import models  # noqa: F401
         import services  # noqa: F401
         import tools  # noqa: F401
@@ -33,6 +34,8 @@ class StructureTests(unittest.TestCase):
         self.assertTrue(settings.aws_region)
         self.assertGreater(settings.max_tokens, 0)
         self.assertGreaterEqual(settings.temperature, 0.0)
+        self.assertEqual(settings.app_mode, "cli")
+        self.assertEqual(settings.mcp_port, 8000)
 
     def test_models_roundtrip(self):
         from models import (
@@ -68,7 +71,6 @@ class StructureTests(unittest.TestCase):
         )
         as_json = result.model_dump_json()
         self.assertIn("Acme", as_json)
-        # Re-validate from the serialized form.
         rebuilt = ResearchResult.model_validate_json(as_json)
         self.assertEqual(rebuilt.input.name, "Acme")
         self.assertEqual(rebuilt.signals.hiring_signals, ["Hiring 5 SDEs"])
@@ -91,21 +93,20 @@ class StructureTests(unittest.TestCase):
         self.assertIsNone(extract_json(""))
 
     def test_extract_key_signals_empty_text_short_circuits(self):
-        from tools.key_signals import extract_key_signals
+        from core.signals import extract_key_signals
 
-        # No Bedrock call should happen for empty text.
         result = extract_key_signals("")
         self.assertEqual(result.hiring_signals, [])
         self.assertEqual(result.funding_signals, [])
 
     def test_get_linkedin_summary_none_for_empty(self):
-        from tools.linkedin_summary import get_linkedin_summary
+        from core.linkedin import get_linkedin_summary
 
         self.assertIsNone(get_linkedin_summary(""))
         self.assertIsNone(get_linkedin_summary("   "))
 
     def test_get_company_website_handles_empty_domain(self):
-        from tools.company_website import get_company_website_content
+        from core.website import get_company_website_content
 
         result = get_company_website_content("")
         self.assertEqual(result.source, "none")
@@ -116,6 +117,20 @@ class StructureTests(unittest.TestCase):
 
         module = importlib.import_module("main")
         self.assertTrue(hasattr(module, "main"))
+        self.assertTrue(hasattr(module, "run_cli"))
+
+    def test_tools_register_five_mcp_tools(self):
+        import tools
+
+        registered = {t.name for t in tools.mcp._tool_manager.list_tools()}
+        expected = {
+            "research_company_website",
+            "extract_company_signals",
+            "summarize_linkedin_profile",
+            "synthesize_outbound_draft",
+            "run_full_research",
+        }
+        self.assertEqual(registered, expected)
 
 
 class ConfigErrorTests(unittest.TestCase):
@@ -127,14 +142,31 @@ class ConfigErrorTests(unittest.TestCase):
         get_settings.cache_clear()
         saved = os.environ.pop("BEDROCK_MODEL_ID", None)
         try:
-            # Prevent load_dotenv from re-injecting BEDROCK_MODEL_ID from
-            # the real .env file, which would make this test a false pass.
             with patch("config.settings._load_dotenv_if_present"):
                 with self.assertRaises(ConfigError):
                     get_settings()
         finally:
             if saved is not None:
                 os.environ["BEDROCK_MODEL_ID"] = saved
+            get_settings.cache_clear()
+
+    def test_invalid_app_mode_raises(self):
+        from unittest.mock import patch
+
+        from config.settings import ConfigError, get_settings
+
+        get_settings.cache_clear()
+        saved = os.environ.get("APP_MODE")
+        os.environ["APP_MODE"] = "bogus"
+        try:
+            with patch("config.settings._load_dotenv_if_present"):
+                with self.assertRaises(ConfigError):
+                    get_settings()
+        finally:
+            if saved is not None:
+                os.environ["APP_MODE"] = saved
+            else:
+                os.environ.pop("APP_MODE", None)
             get_settings.cache_clear()
 
 

@@ -3,6 +3,11 @@
 All values come from environment variables (optionally loaded from a `.env`
 file at startup). `BEDROCK_MODEL_ID` is required and has no default — the
 app fails fast if it is missing.
+
+APP_MODE controls which entry point main.py activates:
+  cli      — interactive terminal (default)
+  mcp      — MCP server over stdio (Claude Desktop / Cursor)
+  mcp-http — MCP server over streamable HTTP on MCP_PORT
 """
 from __future__ import annotations
 
@@ -10,6 +15,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Optional
+
+_VALID_APP_MODES = ("cli", "mcp", "mcp-http")
 
 
 class ConfigError(RuntimeError):
@@ -27,6 +34,8 @@ class Settings:
     temperature: float
     http_timeout_seconds: int
     min_website_text_chars: int
+    app_mode: str
+    mcp_port: int
 
 
 def _load_dotenv_if_present() -> None:
@@ -82,6 +91,14 @@ def _float(name: str, default: float) -> float:
 def get_settings() -> Settings:
     """Return a cached Settings instance read from the environment."""
     _load_dotenv_if_present()
+
+    app_mode = (_optional("APP_MODE", "cli") or "cli").lower().strip()
+    if app_mode not in _VALID_APP_MODES:
+        raise ConfigError(
+            f"APP_MODE={app_mode!r} is invalid. "
+            f"Valid values: {', '.join(_VALID_APP_MODES)}"
+        )
+
     return Settings(
         bedrock_model_id=_require("BEDROCK_MODEL_ID"),
         aws_region=_optional("AWS_REGION", "us-east-1") or "us-east-1",
@@ -92,4 +109,6 @@ def get_settings() -> Settings:
         temperature=_float("BEDROCK_TEMPERATURE", 0.2),
         http_timeout_seconds=_int("HTTP_TIMEOUT_SECONDS", 15),
         min_website_text_chars=_int("MIN_WEBSITE_TEXT_CHARS", 400),
+        app_mode=app_mode,
+        mcp_port=_int("MCP_PORT", 8000),
     )

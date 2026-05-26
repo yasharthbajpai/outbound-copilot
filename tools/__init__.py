@@ -1,18 +1,21 @@
-"""MCP-inspired tool layer.
+"""MCP tool layer for outbound-copilot.
 
-Each tool is a single-purpose callable with a clear input/output contract.
-They are orchestrated by the pipeline in `tools.pipeline`.
+Each module wraps one core/ function with an @mcp.tool() decorator.
+Importing this package registers all five tools on the shared FastMCP
+instance in tools._server.
 """
-from .company_website import get_company_website_content
-from .key_signals import extract_key_signals
-from .linkedin_summary import get_linkedin_summary
-from .outbound_synthesis import synthesize_outbound
-from .pipeline import run_research
+from tools._server import mcp  # noqa: F401 — shared instance
+from tools.extract_signals import extract_company_signals  # noqa: F401
+from tools.linkedin_profile import summarize_linkedin_profile  # noqa: F401
+from tools.outbound_draft import synthesize_outbound_draft  # noqa: F401
+from tools.research_website import research_company_website  # noqa: F401
+from tools.run_research import run_full_research  # noqa: F401
 
 __all__ = [
-    "get_company_website_content",
-    "extract_key_signals",
-    "get_linkedin_summary",
-    "synthesize_outbound",
-    "run_research",
+    "mcp",
+    "research_company_website",
+    "extract_company_signals",
+    "summarize_linkedin_profile",
+    "synthesize_outbound_draft",
+    "run_full_research",
 ]
