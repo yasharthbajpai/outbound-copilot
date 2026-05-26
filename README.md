@@ -88,18 +88,77 @@ Flags:
 - `--skip-linkedin`: do not include any profile in the run
 - `--json`: print the full `ResearchResult` as JSON
 
+## MCP Server
+
+`mcp_server.py` exposes the four research steps — plus a full-pipeline
+convenience tool — as real [MCP](https://modelcontextprotocol.io) tools
+that any MCP client (Claude Desktop, Cursor, etc.) can call directly.
+
+### Tools exposed
+
+| Tool | Description |
+|------|-------------|
+| `research_company_website` | Fetch + extract website text (HTTP → Playwright → LLM fallback) |
+| `extract_company_signals` | Claude extracts hiring, funding, ICP, product focus, etc. |
+| `summarize_linkedin_profile` | Structure a manually pasted LinkedIn profile |
+| `synthesize_outbound_draft` | Generate value props, icebreaker, email snippet |
+| `run_full_research` | One-shot: all four steps in a single call |
+
+### Claude Desktop config
+
+Add this block to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "outbound-copilot": {
+      "command": "/path/to/outbound-copilot/.venv/bin/python",
+      "args": ["/path/to/outbound-copilot/mcp_server.py"],
+      "env": {
+        "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-4-6",
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "...",
+        "AWS_SECRET_ACCESS_KEY": "..."
+      }
+    }
+  }
+}
+```
+
+### Cursor MCP config
+
+Add to `.cursor/mcp.json` in your project (or `~/.cursor/mcp.json` globally):
+
+```json
+{
+  "mcpServers": {
+    "outbound-copilot": {
+      "command": "/path/to/outbound-copilot/.venv/bin/python",
+      "args": ["/path/to/outbound-copilot/mcp_server.py"]
+    }
+  }
+}
+```
+
+### HTTP mode (network-accessible)
+
+```bash
+python mcp_server.py --http            # listens on 0.0.0.0:8000
+python mcp_server.py --http --port 9000
+```
+
 ## Pipeline
 
-1. **`get_company_website_content(domain)`** — tries `httpx`/`requests` +
+1. **`research_company_website(domain)`** — tries `httpx`/`requests` +
    `trafilatura`/BeautifulSoup, then Playwright headless Chromium, then
    a Claude-on-Bedrock best-effort description from name+domain.
-2. **`extract_key_signals(text)`** — Claude returns structured JSON:
+2. **`extract_company_signals(text)`** — Claude returns structured JSON:
    `hiring_signals`, `funding_signals`, `product_focus`,
    `market_segment`, `ideal_customer_profile`, `notable_initiatives`.
-3. **`get_linkedin_summary(raw_profile_text)`** — Claude structures
+3. **`summarize_linkedin_profile(raw_profile_text)`** — Claude structures
    pasted profile text into `name`, `current_role`, `seniority_level`,
    `responsibilities_summary`, `relevant_topics`, `outbound_angle`.
-4. **`synthesize_outbound(...)`** — Claude combines the above into
+4. **`synthesize_outbound_draft(...)`** — Claude combines the above into
    1-2 value propositions, an icebreaker, and an email snippet.
 
 Every step degrades gracefully: if any LLM call fails, the rest of the
